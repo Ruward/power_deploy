@@ -1,0 +1,99 @@
+
+trigger:
+  branches:
+    include:
+      - dev
+  paths:
+    include:
+      - dashboard_files/**/**/*
+
+pool:
+  name: Default 
+
+parameters: 
+  - name: stages 
+    type: object 
+    default:
+      - environment: 't'
+        stage: 'tst'
+        workspace: <powerbi_workspace_id>
+
+variables:
+  azureSubscription: <azure_subscription_name>
+  tenantid: <azure_tenant_id>
+  tst_workspace: <powerbi_workspace_id>
+  acc_workspace: <powerbi_workspace_id>
+  prd_gen_workspace: <powerbi_workspace_id>
+  prd_man_workspace: <powerbi_workspace_id>
+
+stages:
+  - stage: create_artifacts
+    displayName: 'Create and publish artifacts'
+    jobs:
+      - job: Artifact_report_deployment_files
+        displayName: 'Artifact report deployment files'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+          - bash: |
+              ./pipeline_steps/stage_artifact_dirs.sh Report updated_reports
+              cp -r pipeline_steps "$(Build.ArtifactStagingDirectory)"
+              cp -r updated_reports "$(Build.ArtifactStagingDirectory)"
+              cp requirements.txt "$(Build.ArtifactStagingDirectory)"
+            displayName: 'Stage updated report directories and resources'
+          - task: PublishPipelineArtifact@1
+            displayName: Publish updated pbi reports deployment artifact
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifact: report_artifact 
+              publishLocation: 'pipeline'
+  - "${{ each stage in parameters.stages }}":
+    - stage: Deploy_pbi_reports_to_${{ stage.stage }}
+      jobs:
+        - deployment: Deploy_reports_to_${{ stage.stage }}
+          displayName: Deploy PowerBI reports to ${{ stage.stage }}
+          environment: ${{ stage.environment }}
+          workspace:
+            clean: all
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - download: none
+                  - task: DownloadPipelineArtifact@2
+                    displayName: 'Download report artifact'
+                    inputs:
+                      buildType: 'current'
+                      buildVersionToDownload: 'latest'
+                      artifactName: 'report_artifact'
+                      targetPath: '$(Pipeline.Workspace)/report_artifact'  
+                  - task: DownloadSecureFile@1
+                    name: Python_env
+                    displayName: 'Download .env'
+                    inputs:
+                      secureFile: '.env'
+                  - script: | 
+                      python3 -m pip install --upgrade pip 
+                      pip install -r $(Pipeline.Workspace)/report_artifact/requirements.txt 
+                    displayName: "Install requirements"
+                  - bash: |
+                      env_dir=$(Python_env.secureFilePath)
+                      dir="updated_reports"
+                      export env_dir
+                      export dir
+                      python3 $(Pipeline.Workspace)/report_artifact/pipeline_steps/pbi_report_deploy.py 
+                    displayName: Publish Power BI reports to ${{ stage.stage }} workspace
+                    env: 
+                      tenantid: ${{ variables.tenantid }}
+                      env: ${{ stage.environment }}
+                      workspace: ${{ stage.workspace }}
+                      stage: ${{ stage.environment }}
+                      tst_workspace: ${{ variables.tst_workspace }}
+                      acc_workspace: ${{ variables.acc_workspace }}
+                      prd_gen_workspace: ${{ variables.prd_gen_workspace }}
+                      prd_man_workspace: ${{ variables.prd_man_workspace }}
+                  - bash: |
+                      rm -r $(Pipeline.Workspace)/report_artifact
+                    displayName: Clean-up deployment artifact
+                    condition: always()
