@@ -1,6 +1,6 @@
 # Power_deploy
 
-Power_deploy is a python based ci/cd solution for Power BI reports and semantic models. It was designed to make the lives of the Power BI frontend devlopers easier by enabling version control and automated deployment of Power BI resources. 
+Power_deploy is a python based ci/cd solution for Power BI (PBI) reports and semantic models that does not require a premium PBI license. It was designed to make the lives of the Power BI frontend developers easier by enabling version control and automated deployment of Power BI resources. 
 
 ## Usage
 
@@ -15,7 +15,7 @@ The pipeline is set up to follow a DTAP flow (development, testing, acceptance, 
 The pipeline consists of three main parts: the Azure DevOps pipeline configuration (.yml), the git staging logic (.sh), and the python logic (.py). These are connected in the following flow of operations: 
 1. The configuration yaml files contain the overarching logic of the pipeline. This file contains the actions that the deployment agent must execute, be they inline scripts or references to other scipt files (.sh or .py). It also forms the layout of the pipeline, e.g. the stages, jobs, parameters, and ordering of the tasks. 
 2. The git staging logic shell script is responsible for determining which files have changed in the last commit. This ensures that only PBI models and reports that changed in this commit are deployed to the PBI service. This is particularly useful if you have many PBI resources, but only a few change in a commit. This step however is not required and my be redesigned to always include all PBI resources if desired, even though this may increase the pipeline runtime significantly.
-3. The pythonl logic .py scripts contain the actual PBI deployment logic. It uses the resources selected by the staging logic script and deploys these to the PBI service using the REST API endpoints. Surrounding logic, such as base64 encoding, authorization, and parsing api responses, are also included in the python scripts. 
+3. The python logic .py scripts contain the actual PBI deployment logic. It uses the resources selected by the staging logic script and deploys these to the PBI service using the REST API endpoints. Surrounding logic, such as base64 encoding, authorization, and parsing api responses, are also included in the python scripts. 
 
 ## Requirements 
 
@@ -26,12 +26,12 @@ This code does not immediately run out-of-the-box. A number of required setup st
 4. Create a .env secret file containing at least:
     1. the app registration client_id 
     2. the app registration client_secret 
-5. fill in the required Azure, Databricks, and Power BI parameters in the pipeline .yml files
+5. Fill in the required Azure, Databricks, and Power BI parameters in the pipeline .yml files
 6. Enable the Power BI projects (.pbip) setting in PBI desktop 
 7. Put your Power BI resources in the following folder structure
     1. root folder: folder containing the pipeline_steps and .pipelines folders
-    2. semanticmodels: root folder -> models -> general_models/management_models -> model resources 
-    3. reports: root folder -> reports -> genera_reports/management_reports -> report resources
+    2. semanticmodels: root folder -> models -> general_models/management_models -> < put model resources here > 
+    3. reports: root folder -> reports -> general_reports/management_reports -> < put report resources here >
 
 During execution, the folder structure that is created on the deployment agent is determined by the pipeline. 
 
