@@ -1,0 +1,100 @@
+
+trigger:
+  branches:
+    include:
+      - dev
+  paths:
+    include:
+      - models/**/**/*
+
+pool:
+  name: Default 
+
+parameters: 
+  - name: stages 
+    type: object 
+    default:
+      - environment: 't'
+        catalog: 't'
+        stage: 'tst'
+        workspace: <databricks_workspace_id>
+        db_host: <databricks_cluster_host>
+        db_http: <databricks_cluster_httppath>
+        datasource_id: <powerbi_datasource_object_id>
+
+variables:
+  azureSubscription: <azure_subscription_name>
+  tenantid: <azure_tenant_id>
+  gatewayid: <powerbi_gateway_id>
+
+stages:
+  - stage: create_artifacts
+    displayName: 'Create and publish artifacts'
+    jobs:
+      - job: Artifact_model_deployment_files
+        displayName: 'Artifact model deployment files'
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            clean: true
+          - bash: |
+              ./pipeline_steps/stage_artifact_dirs.sh SemanticModel updated_models
+              cp -r pipeline_steps "$(Build.ArtifactStagingDirectory)"
+              cp -r updated_models "$(Build.ArtifactStagingDirectory)"
+              cp requirements.txt "$(Build.ArtifactStagingDirectory)"
+            displayName: 'Stage updated model directories and resources'
+          - task: PublishPipelineArtifact@1
+            displayName: Publish updated pbi models deployment artifact
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)'
+              artifact: model_artifact
+              publishLocation: 'pipeline'
+  - "${{ each stage in parameters.stages }}":
+    - stage: Deploy_pbi_models_to_${{ stage.stage }}
+      jobs:
+        - deployment: Deploy_models_to_${{ stage.stage }}
+          displayName: Deploy PowerBI models to ${{ stage.stage }}
+          environment: ${{ stage.environment }}
+          workspace:
+            clean: all
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - download: none
+                  - task: DownloadPipelineArtifact@2
+                    displayName: 'Download model artifact'
+                    inputs:
+                      buildType: 'current'
+                      buildVersionToDownload: 'latest'
+                      artifactName: 'model_artifact'
+                      targetPath: '$(Pipeline.Workspace)/model_artifact'  
+                  - task: DownloadSecureFile@1
+                    name: Python_env
+                    displayName: 'Download .env'
+                    inputs:
+                      secureFile: '.env'
+                  - script: | 
+                      python3 -m pip install --upgrade pip 
+                      pip install -r $(Pipeline.Workspace)/model_artifact/requirements.txt 
+                    displayName: "Install requirements"
+                  - bash: |
+                      env_dir=$(Python_env.secureFilePath)
+                      dir="updated_models"
+                      export env_dir
+                      export dir
+                      python3 $(Pipeline.Workspace)/model_artifact/pipeline_steps/pbi_model_deploy.py 
+                    displayName: Publish Power BI models to ${{ stage.stage }} workspace
+                    env: 
+                      tenantid: ${{ variables.tenantid }}
+                      workspace: ${{ stage.workspace }}
+                      stage: ${{ stage.environment }}
+                      gateway_id: ${{ variables.gatewayid }}
+                      catalog: ${{ stage.catalog }}
+                      db_host: ${{ stage.db_host }}
+                      db_http: ${{ stage.db_http }}
+                      datasource_id: ${{ stage.datasource_id }} 
+                  - bash: |
+                      rm -r $(Pipeline.Workspace)/model_artifact
+                    displayName: Clean-up deployment artifact
+                    condition: always()
