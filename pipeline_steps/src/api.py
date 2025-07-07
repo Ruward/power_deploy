@@ -1,5 +1,6 @@
 import requests
 import json
+import time
 
 from src.encode import encode
 
@@ -354,8 +355,13 @@ class api:
 
                 if response['status'] != "Running":  # lro process has completed
                     completed = True 
-            else:  # location url query failed
-                raise Exception("Error: LRO status check failed") 
+            elif response.status_code == 429:  # url request is throttled
+                response = response.json()
+                print(f"Got response error code 429, retrying status check in 90 seconds...", response)
+                time.sleep(90)
+            else:  # location url query failed for other reasons
+                response = response.json()
+                raise Exception("Error: LRO status check failed", response) 
             
         if response['status'] == "Succeeded":  # lro process completed successfully
             success = True 
